@@ -1,6 +1,6 @@
 [project]
 name = "pytest-cleanslate"
-version = "1.0"
+version = "1.0.1"
 description = "Collects and executes pytest tests separately"
 readme = "README.md"
 requires-python = ">= 3.8"
