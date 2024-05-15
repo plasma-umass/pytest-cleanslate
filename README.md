@@ -6,7 +6,9 @@ at UMass Amherst's [PLASMA lab](https://plasma-umass.org/).
 [![pypi](https://img.shields.io/pypi/v/pytest-cleanslate?color=blue)](https://pypi.org/project/pytest-cleanslate/)
 [![Downloads](https://static.pepy.tech/badge/pytest-cleanslate)](https://pepy.tech/project/pytest-cleanslate)
 ![pyversions](https://img.shields.io/pypi/pyversions/pytest-cleanslate?logo=python&logoColor=FBE072)
+<!--
 ![tests](https://github.com/jaltmayerpizzorno/pytest-cleanslate/workflows/tests/badge.svg)
+-->
 
 ## About
 pytest-cleanslate is a small plugin for the [pytest](https://github.com/pytest-dev/pytest)
