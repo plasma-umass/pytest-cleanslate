@@ -1,5 +1,6 @@
-# pytest-CleanSlate: Collect and execute pytest tests in separate processes
-by [Juan Altmayer Pizzorno](https://jaltmayerpizzorno.github.io).
+# pytest-CleanSlate: work around test state pollution
+by [Juan Altmayer Pizzorno](https://jaltmayerpizzorno.github.io) and [Emery Berger](https://emeryberger.com)
+at UMass Amherst's [PLASMA lab](https://plasma-umass.org/).
 
 [![license](https://img.shields.io/github/license/plasma-umass/pytest-cleanslate?color=blue)](LICENSE)
 [![pypi](https://img.shields.io/pypi/v/pytest-cleanslate?color=blue)](https://pypi.org/project/pytest-cleanslate/)
