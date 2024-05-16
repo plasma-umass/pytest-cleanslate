@@ -47,34 +47,37 @@ class CleanSlateItem(pytest.Item):
         ihook.pytest_runtest_logfinish(nodeid=self.nodeid, location=self.location)
 
 
-class CleanSlateModule(pytest.Module):
+class CleanSlateCollector(pytest.File, pytest.Collector):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def collect(self):
-        yield CleanSlateItem.from_parent(parent=self, name="(module)")
+        yield CleanSlateItem.from_parent(parent=self, name=self.name)
 
 
 class CleanSlatePlugin:
     """Pytest plugin to isolate test collection, so that if a test's collection pollutes the in-memory
        state, it doesn't affect the execution of other tests."""
 
-    @pytest.hookimpl(tryfirst=True)
-    def pytest_pycollect_makemodule(self, module_path, parent):
-        return CleanSlateModule.from_parent(parent, path=module_path)
 
     @pytest.hookimpl(tryfirst=True)
-    def pytest_runtestloop(self, session):
+    def pytest_pycollect_makemodule(self, module_path, parent):
+        return CleanSlateCollector.from_parent(parent, path=module_path, name=str(module_path))
+
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtestloop(self, session: pytest.Session):
         for item in session.items:
             item.run_forked()
         return True
 
 
-def pytest_addoption(parser):
-    parser.addoption("--cleanslate", action="store_true",
-                     help="Isolate test module collection and test execution using sys.fork")
+def pytest_addoption(parser: pytest.Parser, pluginmanager: pytest.PytestPluginManager) -> None:
+    g = parser.getgroup('cleanslate')
+    g.addoption("--cleanslate", action="store_true",
+                help="Isolate test module collection and test execution using sys.fork()")
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     if config.getoption("--cleanslate"):
         config.pluginmanager.register(CleanSlatePlugin(), "cleanslate_plugin")

@@ -28,3 +28,9 @@ dependencies = [
 
 [project.entry-points.pytest11]
 pytest_cleanslate = "pytest_cleanslate.plugin"
+
+[tool.pytest.ini_options]
+required_plugins = [
+    'pytest-cleanslate',    # must be installed to test
+    'pytest-asyncio',       # required by tests
+]

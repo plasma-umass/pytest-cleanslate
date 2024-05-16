@@ -63,15 +63,16 @@ def test_check_suite_fails(tmp_path, monkeypatch, fail_collect, fail_kind):
         assert p.returncode == pytest.ExitCode.TESTS_FAILED
 
 
+@pytest.mark.parametrize("plugin", ['asyncio', 'no:asyncio'])
 @pytest.mark.parametrize("fail_collect", [True, False])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_isolate_polluted(tmp_path, monkeypatch, fail_collect, fail_kind):
+def test_isolate_polluted(tmp_path, monkeypatch, fail_collect, fail_kind, plugin):
     monkeypatch.chdir(tmp_path)
     tests_dir = Path('tests')
     tests_dir.mkdir()
     make_polluted_suite(tests_dir, fail_collect, fail_kind)
 
-    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
+    p = subprocess.run([sys.executable, '-m', 'pytest', '-p', plugin, '--cleanslate', tests_dir], check=False)
     assert p.returncode == pytest.ExitCode.OK
 
 
@@ -135,3 +136,31 @@ class TestClass:
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
     assert p.returncode == pytest.ExitCode.OK
+
+
+# If asyncio is missing/disabled, the test may show as skipped; we detect it here
+# with the 'fail=True' version of the test.
+@pytest.mark.parametrize("fail", [False, True])
+def test_asyncio(tmp_path, monkeypatch, fail):
+    monkeypatch.chdir(tmp_path)
+    tests_dir = Path('tests')
+    tests_dir.mkdir()
+
+    test = seq2p(tests_dir, 1)
+    test.write_text(f"""\
+import pytest
+import asyncio
+
+async def foo(s):
+    return s
+
+@pytest.mark.asyncio
+async def test_asyncio():
+    assert "bar" {'!=' if fail else '=='} await foo("bar")
+""")
+
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
+    if fail:
+        assert p.returncode == pytest.ExitCode.TESTS_FAILED
+    else:
+        assert p.returncode == pytest.ExitCode.OK
