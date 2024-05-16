@@ -48,12 +48,17 @@ def test_foo():
     return failing, polluter
 
 
-@pytest.mark.parametrize("fail_collect", [True, False])
-@pytest.mark.parametrize("fail_kind", list(FAILURES.keys() - {'kill'}))
-def test_check_suite_fails(tmp_path, monkeypatch, fail_collect, fail_kind):
+@pytest.fixture
+def tests_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     tests_dir = Path('tests')
     tests_dir.mkdir()
+    yield tests_dir
+
+
+@pytest.mark.parametrize("fail_collect", [True, False])
+@pytest.mark.parametrize("fail_kind", list(FAILURES.keys() - {'kill'}))
+def test_check_suite_fails(tests_dir, fail_collect, fail_kind):
     make_polluted_suite(tests_dir, fail_collect, fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', tests_dir], check=False)
@@ -66,10 +71,7 @@ def test_check_suite_fails(tmp_path, monkeypatch, fail_collect, fail_kind):
 @pytest.mark.parametrize("plugin", ['asyncio', 'no:asyncio'])
 @pytest.mark.parametrize("fail_collect", [True, False])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_isolate_polluted(tmp_path, monkeypatch, fail_collect, fail_kind, plugin):
-    monkeypatch.chdir(tmp_path)
-    tests_dir = Path('tests')
-    tests_dir.mkdir()
+def test_isolate_polluted(tests_dir, fail_collect, fail_kind, plugin):
     make_polluted_suite(tests_dir, fail_collect, fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '-p', plugin, '--cleanslate', tests_dir], check=False)
@@ -77,10 +79,7 @@ def test_isolate_polluted(tmp_path, monkeypatch, fail_collect, fail_kind, plugin
 
 
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_pytest_discover_tests(tmp_path, fail_kind, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    tests_dir = Path('tests')
-    tests_dir.mkdir()
+def test_pytest_discover_tests(tests_dir, fail_kind):
     make_polluted_suite(tests_dir, fail_collect=False, fail_kind=fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate'], check=False) # no tests_dir here
@@ -89,10 +88,7 @@ def test_pytest_discover_tests(tmp_path, fail_kind, monkeypatch):
 
 @pytest.mark.parametrize("fail_collect", [True, False])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_unconditionally_failing_test(tmp_path, monkeypatch, fail_collect, fail_kind):
-    monkeypatch.chdir(tmp_path)
-    tests_dir = Path('tests')
-    tests_dir.mkdir()
+def test_unconditionally_failing_test(tests_dir, fail_collect, fail_kind):
     make_polluted_suite(tests_dir, fail_collect, fail_kind)
 
     # _unconditionally_ failing test
@@ -115,17 +111,13 @@ def test_foo():
     assert p.returncode == pytest.ExitCode.TESTS_FAILED
 
 
-def test_isolate_module_yields_collector(tmp_path, monkeypatch):
+def test_isolate_module_yields_collector(tests_dir):
     # A pytest.Collector.collect()'s return value may include not only pytest.Item,
     # but also pytest.Collector.
     #
     # Here we test for this by including a class within the test module:
     # when the module is being collected, pytest.Module.collect() will include
     # a pytest.Class collector to actually collect items from within the class.
-
-    monkeypatch.chdir(tmp_path)
-    tests_dir = Path('tests')
-    tests_dir.mkdir()
 
     test = seq2p(tests_dir, 1)
     test.write_text("""\
@@ -141,11 +133,7 @@ class TestClass:
 # If asyncio is missing/disabled, the test may show as skipped; we detect it here
 # with the 'fail=True' version of the test.
 @pytest.mark.parametrize("fail", [False, True])
-def test_asyncio(tmp_path, monkeypatch, fail):
-    monkeypatch.chdir(tmp_path)
-    tests_dir = Path('tests')
-    tests_dir.mkdir()
-
+def test_asyncio(tests_dir, fail):
     test = seq2p(tests_dir, 1)
     test.write_text(f"""\
 import pytest
