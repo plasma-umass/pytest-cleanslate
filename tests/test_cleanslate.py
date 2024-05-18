@@ -152,3 +152,22 @@ async def test_asyncio():
         assert p.returncode == pytest.ExitCode.TESTS_FAILED
     else:
         assert p.returncode == pytest.ExitCode.OK
+
+
+@pytest.mark.parametrize("tf", ['test_one', 'test_two'])
+def test_filter(tests_dir, tf):
+    test = seq2p(tests_dir, 1)
+    test.write_text("""\
+def test_one():
+    assert True
+
+def test_two():
+    assert False
+""")
+
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', '-k', tf, tests_dir], check=False)
+#    p = subprocess.run([sys.executable, '-m', 'pytest', '-k', tf, tests_dir], check=False)
+    if tf == 'test_two':
+        assert p.returncode == pytest.ExitCode.TESTS_FAILED
+    else:
+        assert p.returncode == pytest.ExitCode.OK

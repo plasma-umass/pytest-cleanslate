@@ -8,7 +8,7 @@ class CleanSlateItem(pytest.Item):
     def runtest(self):
         raise RuntimeError("This should never execute")
 
-    def run_forked(self):
+    def run_forked(self, cleanslate_plugin):
         # adapted from pytest-forked
         import marshal
         import _pytest
@@ -19,17 +19,26 @@ class CleanSlateItem(pytest.Item):
         ihook.pytest_runtest_logstart(nodeid=self.nodeid, location=self.location)
 
         def runforked():
-            module = pytest.Module.from_parent(parent=self.parent, path=self.path)
+            # Use 'parent' as it would have been in pytest_pycollect_makemodule, so that our
+            # nodes aren't included in the chain, as they might confuse other plugins (such as 'mark')
+            module = pytest.Module.from_parent(parent=self.parent.parent, path=self.path)
             reports = list()
 
-            def collect_and_run(collector):
+            def collect_items(collector):
                 for it in collector.collect():
                     if isinstance(it, pytest.Collector):
-                        collect_and_run(it)
+                        yield from collect_items(it)
                     else:
-                        reports.extend(ptf.forked_run_report(it))
+                        yield it
 
-            collect_and_run(module)
+            items = list(collect_items(module))
+
+            caller = self.config.pluginmanager.subset_hook_caller('pytest_collection_modifyitems',
+                                                                  [cleanslate_plugin])
+            caller(session=self.session, config=self.config, items=items)
+
+            for it in items:
+                reports.extend(ptf.forked_run_report(it))
 
             return marshal.dumps([self.config.hook.pytest_report_to_serializable(config=self.config, report=r) for r in reports])
 
@@ -62,14 +71,25 @@ class CleanSlatePlugin:
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_pycollect_makemodule(self, module_path, parent):
-        return CleanSlateCollector.from_parent(parent, path=module_path, name=str(module_path))
+        return CleanSlateCollector.from_parent(parent, path=module_path)
 
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtestloop(self, session: pytest.Session):
         for item in session.items:
-            item.run_forked()
+            item.run_forked(self)
         return True
+
+    @pytest.hookimpl(tryfirst=True, hookwrapper=True)
+    def pytest_collection_modifyitems(self, session, config, items):
+        # Since we're deferring collection to CleanSlateItem, we won't have
+        # functions and other relevant items in 'items', possibly leading to
+        # our CleanSlateItems being deselected.
+        # There doesn't seem to be a way to prevent other plugins from modifying
+        # the list, so we save it, let them run, and restore it.
+        initial_items = list(items)
+        yield
+        items[:] = initial_items
 
 
 def pytest_addoption(parser: pytest.Parser, pluginmanager: pytest.PytestPluginManager) -> None:
