@@ -2,6 +2,7 @@ import pytest
 
 
 class CleanSlateItem(pytest.Item):
+    """Item that stands for a Module until it can be collected from its forked subprocess"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -34,7 +35,7 @@ class CleanSlateItem(pytest.Item):
             items = list(collect_items(module))
 
             caller = self.config.pluginmanager.subset_hook_caller('pytest_collection_modifyitems',
-                                                                  [cleanslate_plugin])
+                                                                  remove_plugins=[cleanslate_plugin])
             caller(session=self.session, config=self.config, items=items)
 
             for it in items:
@@ -70,7 +71,7 @@ class CleanSlatePlugin:
 
 
     @pytest.hookimpl(tryfirst=True)
-    def pytest_pycollect_makemodule(self, module_path, parent):
+    def pytest_pycollect_makemodule(self, module_path: pytest.Path, parent):
         return CleanSlateCollector.from_parent(parent, path=module_path)
 
 
@@ -80,6 +81,7 @@ class CleanSlatePlugin:
             item.run_forked(self)
         return True
 
+
     @pytest.hookimpl(tryfirst=True, hookwrapper=True)
     def pytest_collection_modifyitems(self, session, config, items):
         # Since we're deferring collection to CleanSlateItem, we won't have
@@ -87,7 +89,7 @@ class CleanSlatePlugin:
         # our CleanSlateItems being deselected.
         # There doesn't seem to be a way to prevent other plugins from modifying
         # the list, so we save it, let them run, and restore it.
-        initial_items = list(items)
+        initial_items = list(items) # TODO save them using pytest_deselected() instead?
         yield
         items[:] = initial_items
 
