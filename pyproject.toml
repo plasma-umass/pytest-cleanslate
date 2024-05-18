@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Repository" = "https://github.com/jaltmayerpizzorno/pytest_cleanslate"
+"Repository" = "https://github.com/plasma-umass/pytest_cleanslate"
 
 [project.entry-points.pytest11]
 pytest_cleanslate = "pytest_cleanslate.plugin"
