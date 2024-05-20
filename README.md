@@ -6,7 +6,8 @@ at UMass Amherst's [PLASMA lab](https://plasma-umass.org/).
 [![pypi](https://img.shields.io/pypi/v/pytest-cleanslate?color=blue)](https://pypi.org/project/pytest-cleanslate/)
 ![pyversions](https://img.shields.io/pypi/pyversions/pytest-cleanslate?logo=python&logoColor=FBE072)
 ![tests](https://github.com/plasma-umass/pytest-cleanslate/workflows/tests/badge.svg)
-<!-- [![Downloads](https://static.pepy.tech/badge/pytest-cleanslate)](https://pepy.tech/project/pytest-cleanslate) -->
+[![Downloads](https://static.pepy.tech/badge/pytest-cleanslate)](https://pepy.tech/project/pytest-cleanslate)
+
 ## About
 pytest-cleanslate is a small plugin for the [pytest](https://github.com/pytest-dev/pytest)
 test framework which, as the name implies, helps give each test module a "clean slate" to execute.
@@ -15,3 +16,13 @@ Plugins such as [pytest-forked](https://github.com/pytest-dev/pytest-forked) and
 in separate processes, working around in-memory test "state pollution" resulting from
 their execution, but do not protect against pollution caused by top-level code in test
 modules. This is what pytest-CleanSlate remedies.
+
+## How to use
+After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` invocation.
+
+## Your Mileage May Vary
+This plugin subverts somewhat `pytest`'s mode of operation in that it postpones collecting
+test items within test modules (i.e., within Python test files) until the test execution phase.
+While we have attempted to stay as compatible with other plugins as possible, it is likely
+not to work in some combinations (such as, for example, [pytest-xdist](https://github.com/pytest-dev/pytest-xdist)).
+Feel free to [open an issue](https://github.com/plasma-umass/pytest-cleanslate/issues) if you come across a case where it doesn't work.
