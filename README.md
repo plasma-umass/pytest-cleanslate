@@ -20,9 +20,15 @@ modules. This is what pytest-CleanSlate remedies.
 ## How to use
 After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` invocation.
 
-## Your Mileage May Vary
+## Interaction with other plugins
+This plugin implies the use of `pytest-forked`, i.e., it is as though you installed that
+plugin and passed in `--forked` to execute all tests in separate processes.
+
 This plugin subverts somewhat `pytest`'s mode of operation in that it postpones collecting
 test items within test modules (i.e., within Python test files) until the test execution phase.
 While we have attempted to stay as compatible with other plugins as possible, it is likely
 not to work in some combinations (such as, for example, [pytest-xdist](https://github.com/pytest-dev/pytest-xdist)).
 Feel free to [open an issue](https://github.com/plasma-umass/pytest-cleanslate/issues) if you come across a case where it doesn't work.
+
+## Requirements
+Python 3.8+, Linux or MacOS.
