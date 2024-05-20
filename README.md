@@ -18,7 +18,7 @@ their execution, but do not protect against pollution caused by top-level code i
 modules. This is what pytest-CleanSlate remedies.
 
 ## How to use
-After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` invocation.
+After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` command line (or configuration options).
 
 ## Interaction with other plugins
 This plugin implies the use of `pytest-forked`, i.e., it is as though you installed that
