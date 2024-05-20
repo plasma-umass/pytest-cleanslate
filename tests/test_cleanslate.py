@@ -155,7 +155,9 @@ async def test_asyncio():
 
 
 @pytest.mark.parametrize("tf", ['test_one', 'test_two'])
-def test_filter(tests_dir, tf):
+def test_mark(tests_dir, tf):
+    # the built-in "mark" plugin implements '-k' and '-m'
+
     test = seq2p(tests_dir, 1)
     test.write_text("""\
 def test_one():
@@ -166,8 +168,47 @@ def test_two():
 """)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', '-k', tf, tests_dir], check=False)
-#    p = subprocess.run([sys.executable, '-m', 'pytest', '-k', tf, tests_dir], check=False)
     if tf == 'test_two':
         assert p.returncode == pytest.ExitCode.TESTS_FAILED
     else:
         assert p.returncode == pytest.ExitCode.OK
+
+
+def test_exitfirst(tests_dir):
+    test = seq2p(tests_dir, 1)
+    test.write_text("""\
+from pathlib import Path
+
+def test_one():
+    assert False
+
+def test_two():
+    Path('litmus.txt').touch()
+""")
+
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', '--exitfirst', '-s', tests_dir], check=False,
+                       capture_output=True)
+    assert p.returncode == pytest.ExitCode.TESTS_FAILED
+    assert not Path('litmus.txt').exists()
+    assert 'CRASHED' not in str(p.stdout, 'utf-8')
+
+
+def test_shouldstop(tests_dir):
+    test = seq2p(tests_dir, 1)
+    test.write_text("""\
+import pytest
+from pathlib import Path
+
+def test_one():
+    assert False
+
+def test_two():
+    Path('litmus.txt').touch()
+""")
+
+    # --stepwise sets session.shouldstop upon a test failure.
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', '--stepwise', '-s', tests_dir], check=False,
+                       capture_output=True)
+    assert p.returncode == pytest.ExitCode.INTERRUPTED
+    assert not Path('litmus.txt').exists()
+    assert 'CRASHED' not in str(p.stdout, 'utf-8')
