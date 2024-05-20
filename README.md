@@ -1,4 +1,4 @@
-# pytest-CleanSlate: work around test state pollution
+# pytest-cleanslate: work around test state pollution
 by [Juan Altmayer Pizzorno](https://jaltmayerpizzorno.github.io) and [Emery Berger](https://emeryberger.com)
 at UMass Amherst's [PLASMA lab](https://plasma-umass.org/).
 
