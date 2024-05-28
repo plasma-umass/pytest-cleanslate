@@ -239,11 +239,12 @@ def main():
     failed = results.get_first_failed()
     if failed is None:
         print("No tests failed!", flush=True)
-        with args.to.open("w") as f:
-            json.dump({
-                'failed': failed,
-                'error': 'No tests failed',
-            }, f)
+        if args.save_to:
+            with args.save_to.open("w") as f:
+                json.dump({
+                    'failed': failed,
+                    'error': 'No tests failed',
+                }, f)
         return 1
 
     is_module = results.is_module(failed)
@@ -262,11 +263,12 @@ def main():
 
     if solo.get_outcome(failed) != 'passed':
         print("That also fails by itself!", flush=True)
-        with args.to.open("w") as f:
-            json.dump({
-                'failed': failed,
-                'error': f'{"Module" if is_module else "Test"} also fails by itself',
-            }, f)
+        if args.save_to:
+            with args.save_to.open("w") as f:
+                json.dump({
+                    'failed': failed,
+                    'error': f'{"Module" if is_module else "Test"} also fails by itself',
+                }, f)
         return 1
 
     tests = results.get_tests()
@@ -290,8 +292,8 @@ def main():
     print(f"    tests: {tests}")
     print(flush=True)
 
-    if args.to:
-        with args.to.open("w") as f:
+    if args.save_to:
+        with args.save_to.open("w") as f:
             json.dump({
                 'failed': failed,
                 'modules': modules,
