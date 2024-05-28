@@ -1,4 +1,4 @@
-# pytest-cleanslate: work around test state pollution
+# pytest-cleanslate: work around or find test state pollution
 by [Juan Altmayer Pizzorno](https://jaltmayerpizzorno.github.io) and [Emery Berger](https://emeryberger.com)
 at UMass Amherst's [PLASMA lab](https://plasma-umass.org/).
 
@@ -15,7 +15,12 @@ Plugins such as [pytest-forked](https://github.com/pytest-dev/pytest-forked) and
 [pytest-isolate](https://github.com/gilfree/pytest-isolate) allow you to execute tests
 in separate processes, working around in-memory test "state pollution" resulting from
 their execution, but do not protect against pollution caused by top-level code in test
-modules. This is what pytest-CleanSlate remedies.
+modules; this is what pytest-cleanslate remedies.
+
+pytest-cleanslate also includes `cleanslate-reduce`, a tool for finding where the
+state pollution is occurring.
+Invoked on a test suite with a failing test, `cleanslate-reduce` looks for a smaller
+set of test modules and functions with which the test still fails.
 
 ## How to use
 After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` command line (or configuration options).
