@@ -17,19 +17,19 @@ in separate processes, working around in-memory test "state pollution" resulting
 their execution, but do not protect against pollution caused by top-level code in test
 modules; this is what pytest-cleanslate remedies.
 
-pytest-cleanslate also includes `cleanslate-reduce`, a tool for finding where the
-state pollution is occurring.
+This module also includes `cleanslate-reduce`, a tool for finding where the state pollution
+is occurring.
 Invoked on a test suite with a failing test, `cleanslate-reduce` looks for a smaller
-set of test modules and functions with which the test still fails.
+set of test modules and functions that still lead to the test failure.
 
 ## How to use
 After `pip install pytest-cleanslate`, simply add `--cleanslate` to your `pytest` command line (or configuration options).
 
 ## Interaction with other plugins
-This plugin implies the use of `pytest-forked`, i.e., it is as though you installed that
+Running with `--cleanslate` also makes use of `pytest-forked`, i.e., it is as though you installed that
 plugin and passed in `--forked` to execute all tests in separate processes.
 
-This plugin subverts somewhat `pytest`'s mode of operation in that it postpones collecting
+It also subverts somewhat `pytest`'s mode of operation in that it postpones collecting
 test items within test modules (i.e., within Python test files) until the test execution phase.
 While we have attempted to stay as compatible with other plugins as possible, it is likely
 to not work in some combinations (such as, for example, [pytest-xdist](https://github.com/pytest-dev/pytest-xdist)).
