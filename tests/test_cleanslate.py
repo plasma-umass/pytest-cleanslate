@@ -3,12 +3,14 @@ import sys
 import subprocess
 from pathlib import Path
 import json
+import random
+from textwrap import dedent
 
 pytestmark = pytest.mark.skipif(sys.platform == 'win32', reason='Unix-only')
 
 
 def seq2p(tests_dir, seq):
-    return tests_dir / f"test_{seq}.py"
+    return tests_dir / f"test_{seq:02}.py"
 
 
 FAILURES = {
@@ -19,33 +21,68 @@ FAILURES = {
     'interrupt': 'raise KeyboardInterrupt()'
 }
 
-N_TESTS=10
-def make_polluted_suite(tests_dir: Path, fail_collect: bool, fail_kind: str):
-    """In a suite with 10 tests, test 6 fails; test 3 doesn't fail, but causes 6 to fail."""
+def make_polluted_suite(tests_dir: Path, *, pollute_in_collect: bool = True, fail_collect: bool = False,
+                        fail_kind: str = 'assert'):
+    """in a suite with 10 tests, 'polluter' doesn't fail, but causes 'failing' to fail."""
+    tests = list(range(10))
 
-    for seq in range(N_TESTS):
+    # note the polluter must run before the failing test
+
+    polluter_seq = tests.pop(random.choice(tests[:-1]))
+    polluter = seq2p(tests_dir, polluter_seq)
+    if pollute_in_collect:
+        polluter.write_text(dedent("""\
+            import sys
+            sys.foobar=True
+
+            def test_bar():
+                assert True
+            """))
+    else:
+        polluter.write_text(dedent("""\
+            import sys
+
+            def test_polluter():
+                sys.foobar=True
+                assert True
+
+            def test_bar():
+                assert True
+            """))
+        polluter = f"{polluter}::test_polluter"
+
+    failing = seq2p(tests_dir, tests.pop(random.choice(range(polluter_seq, len(tests)))))
+    if fail_collect:
+        failing.write_text(dedent(f"""\
+            import sys
+            import os
+            import pytest
+
+            if getattr(sys, 'foobar', False):
+                {FAILURES[fail_kind]}
+
+            def test_ok():
+                assert True
+            """))
+    else:
+        failing.write_text(dedent(f"""\
+            import sys
+            import os
+            import pytest
+
+            def test_failing():
+                if getattr(sys, 'foobar', False):
+                    {FAILURES[fail_kind]}
+
+            def test_ok():
+                assert True
+            """))
+        failing = f"{failing}::test_failing"
+
+    for seq in tests:
         seq2p(tests_dir, seq).write_text('def test_foo(): pass')
 
-    polluter = seq2p(tests_dir, 3)
-    polluter.write_text("import sys\n" + "sys.foobar = True\n" + "def test_foo(): pass")
-
-    failing = seq2p(tests_dir, 6)
-    failing.write_text(f"""\
-import sys
-import os
-import pytest
-
-def failure():
-    {FAILURES[fail_kind]}
-
-def test_foo():
-    if getattr(sys, 'foobar', False):
-        failure()
-
-{'test_foo()' if fail_collect else ''}
-""")
-
-    return failing, polluter
+    return str(failing), str(polluter), tests
 
 
 @pytest.fixture
@@ -56,10 +93,11 @@ def tests_dir(tmp_path, monkeypatch):
     yield tests_dir
 
 
-@pytest.mark.parametrize("fail_collect", [True, False])
+@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys() - {'kill'}))
-def test_check_suite_fails(tests_dir, fail_collect, fail_kind):
-    make_polluted_suite(tests_dir, fail_collect, fail_kind)
+def test_check_suite_fails(tests_dir, pollute_in_collect, fail_collect, fail_kind):
+    make_polluted_suite(tests_dir, pollute_in_collect=pollute_in_collect,
+                        fail_collect=fail_collect, fail_kind=fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', tests_dir], check=False)
     if fail_collect or fail_kind in ('exit', 'interrupt'):
@@ -69,10 +107,11 @@ def test_check_suite_fails(tests_dir, fail_collect, fail_kind):
 
 
 @pytest.mark.parametrize("plugin", ['asyncio', 'no:asyncio'])
-@pytest.mark.parametrize("fail_collect", [True, False])
+@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_isolate_polluted(tests_dir, fail_collect, fail_kind, plugin):
-    make_polluted_suite(tests_dir, fail_collect, fail_kind)
+def test_isolate_polluted(tests_dir, pollute_in_collect, fail_collect, fail_kind, plugin):
+    make_polluted_suite(tests_dir, pollute_in_collect=pollute_in_collect,
+                        fail_collect=fail_collect, fail_kind=fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '-p', plugin, '--cleanslate', tests_dir], check=False)
     assert p.returncode == pytest.ExitCode.OK
@@ -86,13 +125,14 @@ def test_pytest_discover_tests(tests_dir, fail_kind):
     assert p.returncode == pytest.ExitCode.OK
 
 
-@pytest.mark.parametrize("fail_collect", [True, False])
+@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
 @pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
-def test_unconditionally_failing_test(tests_dir, fail_collect, fail_kind):
-    make_polluted_suite(tests_dir, fail_collect, fail_kind)
+def test_unconditionally_failing_test(tests_dir, pollute_in_collect, fail_collect, fail_kind):
+    _, _, tests = make_polluted_suite(tests_dir, pollute_in_collect=pollute_in_collect,
+                                      fail_collect=fail_collect, fail_kind=fail_kind)
 
     # _unconditionally_ failing test
-    failing = seq2p(tests_dir, 2)
+    failing = seq2p(tests_dir, random.choice(tests))
     failing.write_text(f"""\
 import sys
 import os
