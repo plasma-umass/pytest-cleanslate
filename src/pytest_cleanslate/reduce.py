@@ -4,6 +4,8 @@ import typing as T
 import json
 import sys
 from .__version__ import __version__
+import tqdm
+import math
 
 
 PYTEST_ARGS = ('-qq', '-p', 'pytest_cleanslate.reduce')
@@ -174,12 +176,15 @@ def _run_pytest(tests_path: Path, extra_args=(), *,
         return Results(results)
 
 
-def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[str], str], bool]) -> T.List[str]:
+def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[str], str], bool],
+                  *, bar: "tqdm") -> T.List[str]:
     assert failing not in items
 
     while len(items) > 1:
-        print(f"... {len(items)}")
         middle = len(items) // 2
+
+        bar.set_postfix({"remaining": len(items)})
+        bar.update()
 
         if fails(items[:middle]+[failing]):
             items = items[:middle]
@@ -195,7 +200,9 @@ def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[st
     if len(items) == 1 and fails([failing]):
         items = []
 
-    print(f"... {len(items)}")
+    bar.set_postfix({"remaining": len(items)})
+    bar.update()
+
     return items
 
 
@@ -206,7 +213,8 @@ def _reduce_tests(tests_path: Path, tests: T.List[str], failing_test: str,
                             tests=test_set, trace=trace)
         return trial.get_outcome(failing_test) == 'failed'
 
-    return _bisect_items(tests, failing_test, fails)
+    with tqdm.tqdm(desc="Trying to reduce tests.....", total=math.ceil(math.log(len(tests), 2))) as bar:
+        return _bisect_items(tests, failing_test, fails, bar=bar)
 
 
 def _reduce_modules(tests_path: Path, tests: T.List[str], failing_test: str,
@@ -217,7 +225,8 @@ def _reduce_modules(tests_path: Path, tests: T.List[str], failing_test: str,
                             tests=tests, modules=module_set, trace=trace)
         return trial.get_outcome(failing_test) == 'failed'
 
-    return _bisect_items(modules, failing_module, fails)
+    with tqdm.tqdm(desc="Trying to reduce modules...", total=math.ceil(math.log(len(modules), 2))) as bar:
+        return _bisect_items(modules, failing_module, fails, bar=bar)
 
 
 def _parse_args():
@@ -284,12 +293,9 @@ def main():
         tests = tests[:-1]
 
         if args.trace: print()
-        print("Trying to reduce test set...", flush=True)
         tests = _reduce_tests(args.tests_path, tests, failed, trace=args.trace, pytest_args=pytest_args)
 
     if args.trace: print()
-    print("Trying to reduce module set...", flush=True)
-
     modules = [m for m in results.get_modules() if m != failed_module]
     modules = _reduce_modules(args.tests_path, tests if is_module else tests + [failed], failed,
                               modules, failed_module, trace=args.trace, pytest_args=pytest_args)

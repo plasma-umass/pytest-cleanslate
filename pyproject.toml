@@ -21,6 +21,7 @@ dependencies = [
     "pytest",
     "py",
     "pytest-forked",
+    "tqdm",
 ]
 
 [project.urls]
