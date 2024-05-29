@@ -22,13 +22,16 @@ FAILURES = {
 }
 
 def make_polluted_suite(tests_dir: Path, *, pollute_in_collect: bool = True, fail_collect: bool = False,
-                        fail_kind: str = 'assert'):
+                        fail_kind: str = 'assert', polluter_seq: int = None, failing_seq: int = None):
     """in a suite with 10 tests, 'polluter' doesn't fail, but causes 'failing' to fail."""
-    tests = list(range(10))
-
     # note the polluter must run before the failing test
+    N_TESTS = 10
 
-    polluter_seq = tests.pop(random.choice(tests[:-1]))
+    assert (polluter_seq is None and failing_seq is None) or (failing_seq > polluter_seq)
+
+    if polluter_seq is None:
+        polluter_seq = random.choice(range(N_TESTS-1))
+
     polluter = seq2p(tests_dir, polluter_seq)
     if pollute_in_collect:
         polluter.write_text(dedent("""\
@@ -51,7 +54,10 @@ def make_polluted_suite(tests_dir: Path, *, pollute_in_collect: bool = True, fai
             """))
         polluter = f"{polluter}::test_polluter"
 
-    failing = seq2p(tests_dir, tests.pop(random.choice(range(polluter_seq, len(tests)))))
+    if failing_seq is None:
+        failing_seq = random.choice(range(polluter_seq+1, N_TESTS))
+
+    failing = seq2p(tests_dir, failing_seq)
     if fail_collect:
         failing.write_text(dedent(f"""\
             import sys
@@ -79,6 +85,7 @@ def make_polluted_suite(tests_dir: Path, *, pollute_in_collect: bool = True, fai
             """))
         failing = f"{failing}::test_failing"
 
+    tests = [seq for seq in range(N_TESTS) if seq not in (polluter_seq, failing_seq)]
     for seq in tests:
         seq2p(tests_dir, seq).write_text('def test_foo(): pass')
 

@@ -180,3 +180,41 @@ def test_reduce(tests_dir, pollute_in_collect, fail_collect):
     assert reduction['failed'] == failing
     assert reduction['modules'] == [get_test_module(polluter)]
     assert reduction['tests'] == [] if pollute_in_collect else [polluter]
+
+
+def test_reduce_other_collection_fails(tests_dir):
+    """Tests that we use --continue-on-collection-errors"""
+    failing, polluter, tests = make_polluted_suite(tests_dir, pollute_in_collect=True, fail_collect=False,
+                                                   polluter_seq = 3, failing_seq = 8)
+
+    seq2p(tests_dir, 0).write_text(dedent("""\
+        import sys
+        sys.needs_this = True
+
+        def test_nothing():
+            assert True
+        """))
+
+    # this one fails collection pytest runs set to ignore the one above
+    seq2p(tests_dir, 2).write_text(dedent("""\
+        import sys
+
+        if not hasattr(sys, 'needs_this'):
+            raise RuntimeError('argh')
+
+        def test_nothing():
+            assert True
+        """))
+
+    reduction_file = tests_dir.parent / "reduction.json"
+
+    p = subprocess.run([sys.executable, '-m', 'pytest_cleanslate.reduce',
+                        '--save-to', reduction_file, '--trace', tests_dir], check=False)
+    assert p.returncode == 0
+
+    with reduction_file.open("r") as f:
+        reduction = json.load(f)
+
+    assert reduction['failed'] == failing
+    assert reduction['modules'] == [get_test_module(polluter)]
+    assert reduction['tests'] == []
