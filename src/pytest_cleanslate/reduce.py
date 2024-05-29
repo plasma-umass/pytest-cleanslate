@@ -199,18 +199,22 @@ def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[st
     return items
 
 
-def _reduce_tests(tests_path: Path, tests: T.List[str], failing_test: str, *, trace=None) -> T.List[str]:
+def _reduce_tests(tests_path: Path, tests: T.List[str], failing_test: str,
+                  *, trace: bool = False, pytest_args: T.List[str] = ()) -> T.List[str]:
     def fails(test_set: T.List[str]):
-        trial = _run_pytest(tests_path, ('--continue-on-collection-errors',), tests=test_set, trace=trace)
+        trial = _run_pytest(tests_path, (*pytest_args, '--continue-on-collection-errors'),
+                            tests=test_set, trace=trace)
         return trial.get_outcome(failing_test) == 'failed'
 
     return _bisect_items(tests, failing_test, fails)
 
 
 def _reduce_modules(tests_path: Path, tests: T.List[str], failing_test: str,
-                    modules: T.List[str], failing_module: str, *, trace=None) -> T.List[str]:
+                    modules: T.List[str], failing_module: str,
+                    *, trace: bool = False, pytest_args: T.List[str] = ()) -> T.List[str]:
     def fails(module_set: T.List[str]):
-        trial = _run_pytest(tests_path, ('--continue-on-collection-errors',), tests=tests, modules=module_set, trace=trace)
+        trial = _run_pytest(tests_path, (*pytest_args, '--continue-on-collection-errors',),
+                            tests=tests, modules=module_set, trace=trace)
         return trial.get_outcome(failing_test) == 'failed'
 
     return _bisect_items(modules, failing_module, fails)
@@ -224,6 +228,7 @@ def _parse_args():
     ap = argparse.ArgumentParser()
     ap.add_argument('--trace', default=False, action=bool_action, help='show pytest outputs, etc.')
     ap.add_argument('--save-to', type=Path, help='file where to save results (JSON)')
+    ap.add_argument('--pytest-args', type=str, default='', help='extra arguments to pass to pytest')
     ap.add_argument('--version', action='version',
                     version=f"%(prog)s v{__version__} (Python {'.'.join(map(str, sys.version_info[:3]))})")
     ap.add_argument('tests_path', type=Path, help='tests file or directory')
@@ -233,9 +238,10 @@ def _parse_args():
 
 def main():
     args = _parse_args()
+    pytest_args = args.pytest_args.split()
 
     print("Running tests...", flush=True)
-    results = _run_pytest(args.tests_path, ('-x',), trace=args.trace)
+    results = _run_pytest(args.tests_path, (*pytest_args, '-x'), trace=args.trace)
 
     failed = results.get_first_failed()
     if failed is None:
@@ -254,14 +260,14 @@ def main():
         if args.trace: print()
         print(f"Module \"{failed}\"'s collection failed; trying it by itself...", flush=True)
         failed_module = failed
-        solo = _run_pytest(args.tests_path, modules=[failed_module], trace=args.trace)
+        tests = None
     else:
         if args.trace: print()
         print(f"Test \"{failed}\" failed; trying it by itself...", flush=True)
         failed_module = results.get_module(failed)
+        tests = [failed]
 
-        solo = _run_pytest(args.tests_path, modules=[failed_module], tests=[failed], trace=args.trace)
-
+    solo = _run_pytest(args.tests_path, pytest_args, modules=[failed_module], tests=tests, trace=args.trace)
     if solo.get_outcome(failed) != 'passed':
         print("That also fails by itself!", flush=True)
         if args.save_to:
@@ -279,13 +285,14 @@ def main():
 
         if args.trace: print()
         print("Trying to reduce test set...", flush=True)
-        tests = _reduce_tests(args.tests_path, tests, failed, trace=args.trace)
+        tests = _reduce_tests(args.tests_path, tests, failed, trace=args.trace, pytest_args=pytest_args)
 
     if args.trace: print()
     print("Trying to reduce module set...", flush=True)
 
     modules = [m for m in results.get_modules() if m != failed_module]
-    modules = _reduce_modules(args.tests_path, tests if is_module else tests + [failed], failed, modules, failed_module, trace=args.trace)
+    modules = _reduce_modules(args.tests_path, tests if is_module else tests + [failed], failed,
+                              modules, failed_module, trace=args.trace, pytest_args=pytest_args)
 
     if args.trace: print()
     print("Reduced failure set:")

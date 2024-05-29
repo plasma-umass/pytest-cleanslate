@@ -218,3 +218,26 @@ def test_reduce_other_collection_fails(tests_dir):
     assert reduction['failed'] == failing
     assert reduction['modules'] == [get_test_module(polluter)]
     assert reduction['tests'] == []
+
+
+@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
+def test_reduce_pytest_args(tests_dir, pollute_in_collect, fail_collect):
+    failing, polluter, tests = make_polluted_suite(tests_dir, fail_collect=fail_collect, pollute_in_collect=pollute_in_collect)
+
+    (tests_dir / "conftest.py").write_text(dedent("""\
+        if read, this breaks everything
+        """))
+
+    reduction_file = tests_dir.parent / "reduction.json"
+
+    p = subprocess.run([sys.executable, '-m', 'pytest_cleanslate.reduce',
+                        '--save-to', reduction_file, '--trace',
+                        '--pytest-args=--noconftest', tests_dir], check=False)
+    assert p.returncode == 0
+
+    with reduction_file.open("r") as f:
+        reduction = json.load(f)
+
+    assert reduction['failed'] == failing
+    assert reduction['modules'] == [get_test_module(polluter)]
+    assert reduction['tests'] == [] if pollute_in_collect else [polluter]
