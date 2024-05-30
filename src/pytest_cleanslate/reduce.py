@@ -130,11 +130,13 @@ class Results:
     def get_first_failed(self) -> T.Union[None, str]:
         return next(iter(o['id'] for o in self._results['collect'] + self._results['run'] if o['outcome'] == 'failed'), None)
 
-    def get_module(self, testid: str) -> str:
-        return testid.split('::')[0]
 
-    def is_module(self, testid: str) -> bool:
-        return '::' not in testid
+def _get_module(testid: str) -> str:
+    return testid.split('::')[0]
+
+
+def _is_module(testid: str) -> bool:
+    return '::' not in testid
 
 
 def _run_pytest(tests_path: Path, extra_args=(), *,
@@ -183,6 +185,7 @@ def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[st
     while len(items) > 1:
         middle = len(items) // 2
 
+        bar.refresh() # for when using --trace
         bar.set_postfix({"remaining": len(items)})
         bar.update()
 
@@ -200,32 +203,45 @@ def _bisect_items(items: T.List[str], failing: str, fails: T.Callable[[T.List[st
     if len(items) == 1 and fails([failing]):
         items = []
 
+    bar.refresh() # for when using --trace
     bar.set_postfix({"remaining": len(items)})
     bar.update()
 
     return items
 
 
-def _reduce_tests(tests_path: Path, tests: T.List[str], failing_test: str,
+def _reduce_tests(tests_path: Path, tests: T.List[str], failing_test: str, modules: T.List[str],
                   *, trace: bool = False, pytest_args: T.List[str] = ()) -> T.List[str]:
     def fails(test_set: T.List[str]):
         trial = _run_pytest(tests_path, (*pytest_args, '--continue-on-collection-errors'),
-                            tests=test_set, trace=trace)
+                            tests=test_set, modules=modules, trace=trace)
         return trial.get_outcome(failing_test) == 'failed'
 
-    with tqdm.tqdm(desc="Trying to reduce tests.....", total=math.ceil(math.log(len(tests), 2))) as bar:
+    module_set = {*modules}
+    tests = [t for t in tests if t != failing_test and _get_module(t) in module_set]
+    if not tests:
+        return tests
+
+    steps=math.ceil(math.log(len(tests), 2))
+    with tqdm.tqdm(desc="Trying to reduce tests.....", total=steps) as bar:
         return _bisect_items(tests, failing_test, fails, bar=bar)
 
 
-def _reduce_modules(tests_path: Path, tests: T.List[str], failing_test: str,
+def _reduce_modules(tests_path: Path, tests: T.List[str], failing_id: str,
                     modules: T.List[str], failing_module: str,
                     *, trace: bool = False, pytest_args: T.List[str] = ()) -> T.List[str]:
+
     def fails(module_set: T.List[str]):
         trial = _run_pytest(tests_path, (*pytest_args, '--continue-on-collection-errors',),
                             tests=tests, modules=module_set, trace=trace)
-        return trial.get_outcome(failing_test) == 'failed'
+        return trial.get_outcome(failing_id) == 'failed'
 
-    with tqdm.tqdm(desc="Trying to reduce modules...", total=math.ceil(math.log(len(modules), 2))) as bar:
+    modules = [m for m in modules if m != failing_module]
+    if not modules:
+        return modules
+
+    steps = math.ceil(math.log(len(modules), 2))
+    with tqdm.tqdm(desc="Trying to reduce modules...", total=steps) as bar:
         return _bisect_items(modules, failing_module, fails, bar=bar)
 
 
@@ -252,53 +268,49 @@ def main():
     print("Running tests...", flush=True)
     results = _run_pytest(args.tests_path, (*pytest_args, '-x'), trace=args.trace)
 
-    failed = results.get_first_failed()
-    if failed is None:
+    failed_id = results.get_first_failed()
+    if failed_id is None:
         print("No tests failed!", flush=True)
         if args.save_to:
             with args.save_to.open("w") as f:
                 json.dump({
-                    'failed': failed,
+                    'failed': failed_id,
                     'error': 'No tests failed',
                 }, f)
         return 1
 
-    is_module = results.is_module(failed)
-
-    if is_module:
+    failed_is_module = _is_module(failed_id)
+    if failed_is_module:
         if args.trace: print()
-        print(f"Module \"{failed}\"'s collection failed; trying it by itself...", flush=True)
-        failed_module = failed
+        print(f"Module \"{failed_id}\"'s collection failed; trying it by itself...", flush=True)
+        failed_module = failed_id
         tests = None
     else:
         if args.trace: print()
-        print(f"Test \"{failed}\" failed; trying it by itself...", flush=True)
-        failed_module = results.get_module(failed)
-        tests = [failed]
+        print(f"Test \"{failed_id}\" failed; trying it by itself...", flush=True)
+        failed_module = _get_module(failed_id)
+        tests = [failed_id]
 
     solo = _run_pytest(args.tests_path, pytest_args, modules=[failed_module], tests=tests, trace=args.trace)
-    if solo.get_outcome(failed) != 'passed':
+    if solo.get_outcome(failed_id) != 'passed':
         print("That also fails by itself!", flush=True)
         if args.save_to:
             with args.save_to.open("w") as f:
                 json.dump({
-                    'failed': failed,
-                    'error': f'{"Module" if is_module else "Test"} also fails by itself',
+                    'failed': failed_id,
+                    'error': f'{"Module" if failed_is_module else "Test"} also fails by itself',
                 }, f)
         return 1
 
     tests = results.get_tests()
-    if not is_module:
-        assert tests[-1] == failed
-        tests = tests[:-1]
-
-        if args.trace: print()
-        tests = _reduce_tests(args.tests_path, tests, failed, trace=args.trace, pytest_args=pytest_args)
 
     if args.trace: print()
-    modules = [m for m in results.get_modules() if m != failed_module]
-    modules = _reduce_modules(args.tests_path, tests if is_module else tests + [failed], failed,
-                              modules, failed_module, trace=args.trace, pytest_args=pytest_args)
+    modules = _reduce_modules(args.tests_path, tests, failed_id, results.get_modules(), failed_module,
+                              trace=args.trace, pytest_args=pytest_args)
+
+    if args.trace: print()
+    tests = _reduce_tests(args.tests_path, tests, failed_id, [*modules, failed_module],
+                          trace=args.trace, pytest_args=pytest_args)
 
     if args.trace: print()
     print("Reduced failure set:")
@@ -309,7 +321,7 @@ def main():
     if args.save_to:
         with args.save_to.open("w") as f:
             json.dump({
-                'failed': failed,
+                'failed': failed_id,
                 'modules': modules,
                 'tests': tests,
             }, f)

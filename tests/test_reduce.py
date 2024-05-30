@@ -241,3 +241,33 @@ def test_reduce_pytest_args(tests_dir, pollute_in_collect, fail_collect):
     assert reduction['failed'] == failing
     assert reduction['modules'] == [get_test_module(polluter)]
     assert reduction['tests'] == [] if pollute_in_collect else [polluter]
+
+
+def test_reduce_polluter_test_in_single_module(tests_dir):
+    test = seq2p(tests_dir, 0)
+    test.write_text(dedent("""\
+        import sys
+
+        def test_polluter():
+            sys.needs_this = True
+            assert True
+
+        def test_nothing():
+            assert True
+
+        def test_failing():
+            assert not hasattr(sys, 'needs_this')
+        """))
+
+    reduction_file = tests_dir.parent / "reduction.json"
+
+    p = subprocess.run([sys.executable, '-m', 'pytest_cleanslate.reduce',
+                        '--save-to', reduction_file, '--trace', tests_dir], check=False)
+    assert p.returncode == 0
+
+    with reduction_file.open("r") as f:
+        reduction = json.load(f)
+
+    assert reduction['failed'] == f"{str(test)}::test_failing"
+    assert reduction['modules'] == []
+    assert reduction['tests'] == [f"{str(test)}::test_polluter"]
