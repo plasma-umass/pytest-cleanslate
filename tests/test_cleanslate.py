@@ -259,3 +259,25 @@ def test_two():
     assert p.returncode == pytest.ExitCode.INTERRUPTED
     assert not Path('litmus.txt').exists()
     assert 'CRASHED' not in str(p.stdout, 'utf-8')
+
+
+def test_polluter_test_in_single_module(tests_dir):
+    test = seq2p(tests_dir, 0)
+    test.write_text(dedent("""\
+        import sys
+
+        def test_polluter():
+            sys.needs_this = True
+            assert True
+
+        def test_nothing():
+            assert True
+
+        def test_failing():
+            assert not hasattr(sys, 'needs_this')
+        """))
+
+    reduction_file = tests_dir.parent / "reduction.json"
+
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
+    assert p.returncode == pytest.ExitCode.OK
