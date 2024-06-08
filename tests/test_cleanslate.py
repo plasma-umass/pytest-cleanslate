@@ -277,7 +277,18 @@ def test_polluter_test_in_single_module(tests_dir):
             assert not hasattr(sys, 'needs_this')
         """))
 
-    reduction_file = tests_dir.parent / "reduction.json"
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
+    assert p.returncode == pytest.ExitCode.OK
+
+
+def test_closes_stdout_stderr(tests_dir):
+    test = seq2p(tests_dir, 0)
+    test.write_text(dedent("""\
+        import os
+
+        os.close(1)
+        os.close(2)
+        """))
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
     assert p.returncode == pytest.ExitCode.OK

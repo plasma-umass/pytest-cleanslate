@@ -2,6 +2,29 @@ import pytest
 from pathlib import Path
 
 
+# py.process.ForkedFunc does os.close(1) and os.close(2) just before
+# the exit of the child process... but if the function called also
+# closes those files, an OSError results.  Here we ignore those...
+# Really we need to move away from 'py'...
+import os
+import errno
+class IgnoreOsCloseErrors:
+    def __enter__(self):
+        self.original_os_close = os.close
+
+        def ignoring_close(fd):
+            try:
+                self.original_os_close(fd)
+            except OSError as e:
+                if fd not in (1, 2) or e.errno != errno.EBADF:
+                    raise
+
+        os.close = ignoring_close
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        os.close = self.original_os_close
+
+
 class CleanSlateItem(pytest.Item):
     """Item that stands for a Module until it can be collected from its forked subprocess"""
     def __init__(self, **kwargs):
@@ -50,7 +73,8 @@ class CleanSlateItem(pytest.Item):
 
             return marshal.dumps([self.config.hook.pytest_report_to_serializable(config=self.config, report=r) for r in reports])
 
-        ff = py.process.ForkedFunc(runforked)
+        with IgnoreOsCloseErrors():
+            ff = py.process.ForkedFunc(runforked)
         result = ff.waitfinish()
 
         if result.retval is None:
