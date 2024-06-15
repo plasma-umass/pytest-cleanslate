@@ -138,8 +138,13 @@ def get_module(testid: str) -> str:
     return testid.split('::')[0]
 
 
-def is_module(testid: str) -> bool:
+def _is_module(testid: str) -> bool:
     return '::' not in testid
+
+
+def get_function(testid: str) -> str:
+    if '::' in testid:
+        return testid.split('::')[1].split('[')[0]
 
 
 def run_pytest(tests_path: Path, pytest_args=(), *,
@@ -261,7 +266,7 @@ def reduce(*, tests_path: Path, results: Results = None, pytest_args: T.List[str
             'error': 'No tests failed',
         }
 
-    failed_is_module = is_module(failed_id)
+    failed_is_module = _is_module(failed_id)
     if failed_is_module:
         if trace: print()
         print(f"Module \"{failed_id}\"'s collection failed; trying it by itself...", flush=True)

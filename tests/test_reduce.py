@@ -9,12 +9,19 @@ from pathlib import Path
 
 import pytest_cleanslate.reduce as reduce
 
-from pytest_cleanslate.reduce import MODULE_LIST_ARG, TEST_LIST_ARG, RESULTS_ARG, Results
+from pytest_cleanslate.reduce import MODULE_LIST_ARG, TEST_LIST_ARG, RESULTS_ARG, Results, \
+            get_module, get_function
 
 
-def get_test_module(testid):
-    return testid.split('::')[0]
+def test_get_module():
+    assert 'test.py' == get_module('test.py')
+    assert 'test.py' == get_module('test.py::test_foo')
+    assert 'test.py' == get_module('test.py::test_foo[1]')
 
+def test_get_function():
+    assert None == get_function('test.py')
+    assert 'test_foo' == get_function('test.py::test_foo')
+    assert 'test_foo' == get_function('test.py::test_foo[1]')
 
 def test_run_pytest_collect_failure(tests_dir):
     test1 = seq2p(tests_dir, 1)
@@ -148,7 +155,7 @@ def test_reduce(tests_dir, pollute_in_collect, fail_collect, r):
     reduction = r(tests_path=tests_dir, trace=True)
 
     assert reduction['failed'] == failing
-    assert reduction['modules'] == [get_test_module(polluter)]
+    assert reduction['modules'] == [get_module(polluter)]
     assert reduction['tests'] == [] if pollute_in_collect else [polluter]
 
 
@@ -180,7 +187,7 @@ def test_reduce_other_collection_fails(tests_dir, r):
     reduction = r(tests_path=tests_dir, trace=True)
 
     assert reduction['failed'] == failing
-    assert reduction['modules'] == [get_test_module(polluter)]
+    assert reduction['modules'] == [get_module(polluter)]
     assert reduction['tests'] == []
 
 
@@ -196,7 +203,7 @@ def test_reduce_pytest_args(tests_dir, pollute_in_collect, fail_collect, r):
     reduction = r(tests_path=tests_dir, trace=True, pytest_args=['--noconftest'])
 
     assert reduction['failed'] == failing
-    assert reduction['modules'] == [get_test_module(polluter)]
+    assert reduction['modules'] == [get_module(polluter)]
     assert reduction['tests'] == [] if pollute_in_collect else [polluter]
 
 
