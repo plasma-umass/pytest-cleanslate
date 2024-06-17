@@ -253,7 +253,8 @@ def _reduce_modules(tests_path: Path, tests: T.List[str], failing_id: str,
         return _bisect_items(modules, failing_module, fails, bar=bar)
 
 
-def reduce(*, tests_path: Path, results: Results = None, pytest_args: T.List[str] = (), trace: bool = False, **args) -> dict:
+def reduce(*, tests_path: Path, results: Results = None, pytest_args: T.List[str] = (),
+           trace: bool = False, **args) -> dict:
     if not results:
         print("Running tests...", flush=True)
         results = run_pytest(tests_path, (*pytest_args, '-x'), trace=trace)
@@ -292,9 +293,12 @@ def reduce(*, tests_path: Path, results: Results = None, pytest_args: T.List[str
     modules = _reduce_modules(tests_path, tests, failed_id, results.get_modules(), failed_module,
                               trace=trace, pytest_args=pytest_args)
 
-    if trace: print()
-    tests = _reduce_tests(tests_path, tests, failed_id, [*modules, failed_module],
-                          trace=trace, pytest_args=pytest_args)
+    if not failed_is_module:
+        if trace: print()
+        tests = _reduce_tests(tests_path, tests, failed_id, [*modules, failed_module],
+                              trace=trace, pytest_args=pytest_args)
+
+        # TODO if tests != [], see if it's enough to disable just them
 
     if trace: print()
     print("Reduced failure set:")

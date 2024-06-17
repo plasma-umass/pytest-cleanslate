@@ -18,10 +18,12 @@ def test_get_module():
     assert 'test.py' == get_module('test.py::test_foo')
     assert 'test.py' == get_module('test.py::test_foo[1]')
 
+
 def test_get_function():
     assert None == get_function('test.py')
     assert 'test_foo' == get_function('test.py::test_foo')
     assert 'test_foo' == get_function('test.py::test_foo[1]')
+
 
 def test_run_pytest_collect_failure(tests_dir):
     test1 = seq2p(tests_dir, 1)
@@ -148,7 +150,8 @@ def test_reduce_test_fails_by_itself(tests_dir, r):
 @pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
 @pytest.mark.parametrize("r", [reduce.reduce, cli_reduce])
 def test_reduce(tests_dir, pollute_in_collect, fail_collect, r):
-    failing, polluter, tests = make_polluted_suite(tests_dir, fail_collect=fail_collect, pollute_in_collect=pollute_in_collect)
+    failing, polluter, tests = make_polluted_suite(tests_dir, fail_collect=fail_collect,
+                                                   pollute_in_collect=pollute_in_collect)
 
     reduction_file = tests_dir.parent / "reduction.json"
 
@@ -156,7 +159,28 @@ def test_reduce(tests_dir, pollute_in_collect, fail_collect, r):
 
     assert reduction['failed'] == failing
     assert reduction['modules'] == [get_module(polluter)]
-    assert reduction['tests'] == [] if pollute_in_collect else [polluter]
+# this would be more precise... is it the test or the module?
+#    assert reduction['modules'] == ([get_module(polluter)] if pollute_in_collect else [])
+    assert reduction['tests'] == ([] if pollute_in_collect else [polluter])
+
+
+@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
+@pytest.mark.parametrize("r", [reduce.reduce, cli_reduce])
+def test_reduce_pytest_args(tests_dir, pollute_in_collect, fail_collect, r):
+    failing, polluter, tests = make_polluted_suite(tests_dir, fail_collect=fail_collect,
+                               pollute_in_collect=pollute_in_collect)
+
+    (tests_dir / "conftest.py").write_text(dedent("""\
+        if read, this breaks everything
+        """))
+
+    reduction = r(tests_path=tests_dir, trace=True, pytest_args=['--noconftest'])
+
+    assert reduction['failed'] == failing
+    assert reduction['modules'] == [get_module(polluter)]
+# this would be more precise... is it the test or the module?
+#    assert reduction['modules'] == ([get_module(polluter)] if pollute_in_collect else [])
+    assert reduction['tests'] == ([] if pollute_in_collect else [polluter])
 
 
 @pytest.mark.parametrize("r", [reduce.reduce, cli_reduce])
@@ -189,22 +213,6 @@ def test_reduce_other_collection_fails(tests_dir, r):
     assert reduction['failed'] == failing
     assert reduction['modules'] == [get_module(polluter)]
     assert reduction['tests'] == []
-
-
-@pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
-@pytest.mark.parametrize("r", [reduce.reduce, cli_reduce])
-def test_reduce_pytest_args(tests_dir, pollute_in_collect, fail_collect, r):
-    failing, polluter, tests = make_polluted_suite(tests_dir, fail_collect=fail_collect, pollute_in_collect=pollute_in_collect)
-
-    (tests_dir / "conftest.py").write_text(dedent("""\
-        if read, this breaks everything
-        """))
-
-    reduction = r(tests_path=tests_dir, trace=True, pytest_args=['--noconftest'])
-
-    assert reduction['failed'] == failing
-    assert reduction['modules'] == [get_module(polluter)]
-    assert reduction['tests'] == [] if pollute_in_collect else [polluter]
 
 
 @pytest.mark.parametrize("r", [reduce.reduce, cli_reduce])
