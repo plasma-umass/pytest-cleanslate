@@ -35,7 +35,7 @@ class CleanSlateItem(pytest.Item):
 
     def collect_and_run(self):
         # adapted from pytest-forked
-        import marshal
+        import pickle
         import _pytest
         import pytest_forked as ptf # FIXME pytest-forked is unmaintained
         import py                   # FIXME py is maintenance only
@@ -52,7 +52,16 @@ class CleanSlateItem(pytest.Item):
                     else:
                         yield it
 
-            self.session.items = list(collect_items(module))
+            try:
+                self.session.items = list(collect_items(module))
+            except BaseException:
+                excinfo = pytest.ExceptionInfo.from_current()
+                return pickle.dumps([pytest.CollectReport(
+                            nodeid=self.nodeid,
+                            outcome='failed',
+                            result=None,
+                            longrepr=self._repr_failure_py(excinfo, "short"))
+                ])
 
             pm = self.config.pluginmanager
             caller = pm.subset_hook_caller('pytest_collection_modifyitems', remove_plugins=[self.parent.plugin])
@@ -70,8 +79,10 @@ class CleanSlateItem(pytest.Item):
                 self.ihook.pytest_runtestloop(session=self.session)
             except (pytest.Session.Interrupted, pytest.Session.Failed):
                 pass
+            except BaseException as e:
+                return pickle.dumps(e)
 
-            return marshal.dumps([self.config.hook.pytest_report_to_serializable(config=self.config, report=r) for r in reports])
+            return pickle.dumps(reports)
 
         with IgnoreOsCloseErrors():
             ff = py.process.ForkedFunc(runforked)
@@ -80,7 +91,11 @@ class CleanSlateItem(pytest.Item):
         if result.retval is None:
             return [ptf.report_process_crash(self, result)]
 
-        return [self.config.hook.pytest_report_from_serializable(config=self.config, data=r) for r in marshal.loads(result.retval)]
+        retval = pickle.loads(result.retval)
+        if isinstance(retval, BaseException):
+            raise retval
+
+        return retval
 
 
 class CleanSlateCollector(pytest.File, pytest.Collector):
@@ -90,6 +105,32 @@ class CleanSlateCollector(pytest.File, pytest.Collector):
 
     def collect(self):
         yield CleanSlateItem.from_parent(parent=self, name=self.name)
+
+
+def run_item_forked(item):
+    import _pytest.runner
+    import pytest_forked as ptf # FIXME pytest-forked is unmaintained
+    import py                   # FIXME py is maintenance only
+    import pickle
+
+    def runforked():
+        try:
+            return pickle.dumps(_pytest.runner.runtestprotocol(item, log=False))
+        except BaseException as e:
+            return pickle.dumps(e)
+
+    ff = py.process.ForkedFunc(runforked)
+    result = ff.waitfinish()
+
+    if result.retval is None:
+        return [ptf.report_process_crash(item, result)]
+
+    retval = pickle.loads(result.retval)
+
+    if isinstance(retval, BaseException):
+        raise retval
+
+    return retval
 
 
 class CleanSlatePlugin:
@@ -104,15 +145,13 @@ class CleanSlatePlugin:
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_protocol(self, item: pytest.Item, nextitem: pytest.Item):
-        import pytest_forked as ptf # FIXME pytest-forked is unmaintained
-
         ihook = item.ihook
         ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
         if isinstance(item, CleanSlateItem):
             reports = item.collect_and_run()
         else:
             # note any side effects, such as setting session.shouldstop, are lost...
-            reports = ptf.forked_run_report(item)
+            reports = run_item_forked(item)
 
         for rep in reports:
             ihook.pytest_runtest_logreport(report=rep)

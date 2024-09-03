@@ -17,7 +17,8 @@ FAILURES = {
     'assert': 'assert False',
     'exception': 'raise RuntimeError("test")',
     'kill': 'os.kill(os.getpid(), 9)',
-    'exit': 'pytest.exit("goodbye")',
+#    'exit': 'pytest.exit("goodbye")', # FIXME add support
+    'exit': 'sys.exit(0)',
     'interrupt': 'raise KeyboardInterrupt()'
 }
 
@@ -107,7 +108,7 @@ def test_check_suite_fails(tests_dir, pollute_in_collect, fail_collect, fail_kin
                         fail_collect=fail_collect, fail_kind=fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', tests_dir], check=False)
-    if fail_collect or fail_kind in ('exit', 'interrupt'):
+    if fail_collect or fail_kind == 'interrupt':
         assert p.returncode == pytest.ExitCode.INTERRUPTED
     else:
         assert p.returncode == pytest.ExitCode.TESTS_FAILED
@@ -154,8 +155,37 @@ def test_foo():
 {'test_foo()' if fail_collect else ''}
 """)
 
-    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False)
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False,
+                       capture_output=True)
+    print(failing.read_text())
+    assert p.returncode == (pytest.ExitCode.INTERRUPTED if (fail_kind == 'interrupt' and not fail_collect)
+                            else pytest.ExitCode.TESTS_FAILED)
+
+    # pytest-forked error message that shouldn't be used unless the process was truly killed
+    assert 'CRASHED with signal 0' not in str(p.stdout, 'utf-8')
+
+
+def test_collect_failure(tests_dir):
+    # _unconditionally_ failing test
+    failing = seq2p(tests_dir, 1)
+    failing.write_text(f"""\
+import sys
+import os
+import pytest
+
+def test_foo():
+    failure()
+
+assert False
+""")
+
+    p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False,
+                       capture_output=True)
+    # FIXME collection errors should show as interrupted
     assert p.returncode == pytest.ExitCode.TESTS_FAILED
+
+    # pytest-forked error message that shouldn't be used unless the process was truly killed
+    assert 'CRASHED with signal 0' not in str(p.stdout, 'utf-8')
 
 
 def test_isolate_module_yields_collector(tests_dir):
