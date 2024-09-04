@@ -153,6 +153,10 @@ class CleanSlatePlugin:
             # note any side effects, such as setting session.shouldstop, are lost...
             reports = run_item_forked(item)
 
+        if (reports and isinstance(reports[0], pytest.CollectReport) and reports[0].outcome == 'failed'
+            and not item.config.option.continue_on_collection_errors):
+            item.session.shouldstop = 'collection error'
+
         for rep in reports:
             ihook.pytest_runtest_logreport(report=rep)
 

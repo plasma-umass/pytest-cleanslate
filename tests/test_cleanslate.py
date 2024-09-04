@@ -17,8 +17,7 @@ FAILURES = {
     'assert': 'assert False',
     'exception': 'raise RuntimeError("test")',
     'kill': 'os.kill(os.getpid(), 9)',
-#    'exit': 'pytest.exit("goodbye")', # FIXME add support
-    'exit': 'sys.exit(0)',
+    'exit': 'pytest.exit("goodbye")',
     'interrupt': 'raise KeyboardInterrupt()'
 }
 
@@ -108,11 +107,16 @@ def test_check_suite_fails(tests_dir, pollute_in_collect, fail_collect, fail_kin
                         fail_collect=fail_collect, fail_kind=fail_kind)
 
     p = subprocess.run([sys.executable, '-m', 'pytest', tests_dir], check=False)
-    if fail_collect or fail_kind == 'interrupt':
+    if fail_collect or fail_kind in ('interrupt', 'exit'):
         assert p.returncode == pytest.ExitCode.INTERRUPTED
     else:
         assert p.returncode == pytest.ExitCode.TESTS_FAILED
 
+    p = subprocess.run([sys.executable, '-m', 'pytest',
+                        '--continue-on-collection-errors', tests_dir], check=False)
+    # pytest versions disagree on what the exit code should be here; more current
+    # ones seem to side with INTERRUPTED for 'interrupt' and 'exit'
+    assert p.returncode in (pytest.ExitCode.INTERRUPTED, pytest.ExitCode.TESTS_FAILED)
 
 @pytest.mark.parametrize("plugin", ['asyncio', 'no:asyncio'])
 @pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
@@ -134,7 +138,7 @@ def test_pytest_discover_tests(tests_dir, fail_kind):
 
 
 @pytest.mark.parametrize("pollute_in_collect, fail_collect", [[False, False], [True, False], [True, True]])
-@pytest.mark.parametrize("fail_kind", list(FAILURES.keys()))
+@pytest.mark.parametrize("fail_kind", list(FAILURES.keys() - {'kill'}))
 def test_unconditionally_failing_test(tests_dir, pollute_in_collect, fail_collect, fail_kind):
     _, _, tests = make_polluted_suite(tests_dir, pollute_in_collect=pollute_in_collect,
                                       fail_collect=fail_collect, fail_kind=fail_kind)
@@ -158,10 +162,21 @@ def test_foo():
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False,
                        capture_output=True)
     print(failing.read_text())
-    assert p.returncode == (pytest.ExitCode.INTERRUPTED if (fail_kind == 'interrupt' and not fail_collect)
-                            else pytest.ExitCode.TESTS_FAILED)
-
+    if fail_collect or fail_kind in ('interrupt', 'exit'):
+        assert p.returncode == pytest.ExitCode.INTERRUPTED
+    else:
+        assert p.returncode == pytest.ExitCode.TESTS_FAILED
     # pytest-forked error message that shouldn't be used unless the process was truly killed
+    assert 'CRASHED with signal 0' not in str(p.stdout, 'utf-8')
+
+
+    p = subprocess.run([sys.executable, '-m', 'pytest',
+                        '--continue-on-collection-errors', tests_dir],
+                       check=False, capture_output=True)
+    if fail_kind == 'interrupt' or (fail_kind == 'exit' and not fail_collect):
+        assert p.returncode == pytest.ExitCode.INTERRUPTED
+    else:
+        assert p.returncode == pytest.ExitCode.TESTS_FAILED
     assert 'CRASHED with signal 0' not in str(p.stdout, 'utf-8')
 
 
@@ -181,8 +196,8 @@ assert False
 
     p = subprocess.run([sys.executable, '-m', 'pytest', '--cleanslate', tests_dir], check=False,
                        capture_output=True)
-    # FIXME collection errors should show as interrupted
-    assert p.returncode == pytest.ExitCode.TESTS_FAILED
+    print(str(p.stdout, 'utf-8'))
+    assert p.returncode == pytest.ExitCode.INTERRUPTED
 
     # pytest-forked error message that shouldn't be used unless the process was truly killed
     assert 'CRASHED with signal 0' not in str(p.stdout, 'utf-8')
